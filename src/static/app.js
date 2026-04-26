@@ -568,6 +568,9 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         `
         }
+        <button class="share-button" data-activity="${name}" aria-label="Share this activity" title="Share this activity">
+          🔗 Share
+        </button>
       </div>
     `;
 
@@ -587,7 +590,100 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    // Add click handler for share button
+    const shareButton = activityCard.querySelector(".share-button");
+    shareButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      shareActivity(name, details, shareButton);
+    });
+
     activitiesList.appendChild(activityCard);
+  }
+
+  // Function to share an activity
+  function shareActivity(name, details, buttonEl) {
+    const shareUrl =
+      window.location.origin +
+      window.location.pathname +
+      "?activity=" +
+      encodeURIComponent(name);
+    const shareText = `Check out "${name}" at Mergington High School! ${details.description}`;
+
+    // Close any open share panel first
+    document.querySelectorAll(".share-panel").forEach((p) => p.remove());
+
+    // Use native Web Share API if available (works great on mobile)
+    if (navigator.share) {
+      navigator
+        .share({ title: name, text: shareText, url: shareUrl })
+        .catch(() => {}); // user cancelled
+      return;
+    }
+
+    // Otherwise show a small share dropdown
+    const panel = document.createElement("div");
+    panel.className = "share-panel";
+    panel.innerHTML = `
+      <button class="share-option" id="share-copy">📋 Copy Link</button>
+      <a class="share-option" href="https://wa.me/?text=${encodeURIComponent(shareText + " " + shareUrl)}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+      <a class="share-option" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener noreferrer">🐦 Twitter / X</a>
+    `;
+
+    // Position panel relative to button
+    buttonEl.parentElement.style.position = "relative";
+    buttonEl.parentElement.appendChild(panel);
+
+    // Copy link handler
+    panel.querySelector("#share-copy").addEventListener("click", () => {
+      navigator.clipboard
+        .writeText(shareUrl)
+        .then(() => {
+          showMessage("Link copied to clipboard!", "success");
+        })
+        .catch(() => {
+          showMessage("Could not copy link. Please copy it manually: " + shareUrl, "info");
+        });
+      panel.remove();
+    });
+
+    // Close panel when clicking elsewhere
+    function closePanelOnClick(e) {
+      if (!panel.contains(e.target) && e.target !== buttonEl) {
+        panel.remove();
+        document.removeEventListener("click", closePanelOnClick);
+      }
+    }
+    setTimeout(() => {
+      document.addEventListener("click", closePanelOnClick);
+    }, 0);
+  }
+
+  // Highlight activity from URL parameter (when someone opens a shared link)
+  function highlightSharedActivity() {
+    const params = new URLSearchParams(window.location.search);
+    const sharedActivity = params.get("activity");
+    if (!sharedActivity) return;
+
+    // Wait until cards are rendered, then scroll to and highlight the matching card
+    const observer = new MutationObserver(() => {
+      const cards = activitiesList.querySelectorAll(".activity-card");
+      for (const card of cards) {
+        const heading = card.querySelector("h4");
+        if (heading && heading.textContent.trim() === sharedActivity) {
+          card.classList.add("highlighted-activity");
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          observer.disconnect();
+          clearTimeout(observerTimeout);
+          break;
+        }
+      }
+    });
+    observer.observe(activitiesList, { childList: true, subtree: false });
+
+    // Disconnect after 10 seconds to prevent memory leaks if activity is not found
+    const observerTimeout = setTimeout(() => {
+      observer.disconnect();
+    }, 10000);
   }
 
   // Event listeners for search and filter
@@ -865,4 +961,5 @@ document.addEventListener("DOMContentLoaded", () => {
   checkAuthentication();
   initializeFilters();
   fetchActivities();
+  highlightSharedActivity();
 });
